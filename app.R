@@ -316,5 +316,5 @@ server <- function(input, output) {
 }
 
 
-#### >>> 4. Lancement de l'application
+#### >>> 4. Lancement de l'application ####
 shinyApp(ui = ui, server = server)
