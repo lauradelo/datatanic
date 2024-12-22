@@ -1,3 +1,4 @@
+#### >>> 0. Chargement et préparation des données ####
 library(shiny)
 library(dplyr)
 library(DT)
@@ -12,14 +13,11 @@ library(e1071)
 library(rpart)
 
 
-#### >>> 1.0 Chargement et préparation des données
-# chargement du csv
+#### >>> 1. Chargement et préparation des données ####
+#### >> 1.1 Chargement du csv ####
 titanic <- read.csv('donnée_fr.csv', sep = ';')
 
-
-
-
-# préparation des données
+#### >> 1.2 préparation des données ####
 titanic_clean <- titanic %>%
   mutate(
     survecu = as.factor(survecu),
@@ -28,40 +26,42 @@ titanic_clean <- titanic %>%
   ) %>%
   drop_na(survecu, classe_billet, sexe, age, tarif)
 
+#### >> 1.3 Préparation du machine learning ####
 set.seed(0)
 train_index <- createDataPartition(titanic_clean$survecu, p = 0.8, list = FALSE)
 train_data <- titanic_clean[train_index, ]
 test_data <- titanic_clean[-train_index, ]
 
-# Modèle Random Forest
+#### >> 1.4 Préparation des modèles ####
+#### > 1.4.1 Modèle Random Forest ####
 rf_model <- randomForest(
   survecu ~ sexe + age + classe_billet + nb_famille_proche + nb_parents_enfants + tarif,
   data = train_data, ntree = 100, mtry = 3, importance = TRUE
 )
 
-# Modèle Régression Logistique
+#### > 1.4.2 Modèle Régression Logistique ####
 logistic_model <- glm(
   survecu ~ sexe + age + classe_billet + nb_famille_proche + nb_parents_enfants + tarif,
   data = train_data, family = binomial
 )
 
-# Modèle Arbre de Décision
+#### > 1.4.3 Modèle Arbre de Décision ####
 decision_tree_model <- rpart(
   survecu ~ sexe + age + classe_billet + nb_famille_proche + nb_parents_enfants + tarif,
   data = train_data, method = "class"
 )
 
-# Modèle k-NN
+#### > 1.4.4 Modèle k-NN ####
 knn_model <- train(
   survecu ~ sexe + age + classe_billet + nb_famille_proche + nb_parents_enfants + tarif,
   data = train_data, method = "knn", tuneLength = 10
 )
 
-# === Interface utilisateur avec shinydashboard ===
+#### >>> 2. Interface utilisateur ####
 ui <- dashboardPage(
   dashboardHeader(title = "DataTanic"),
   
-  # Barre latérale avec les onglets
+  #### >> 2.1 Barre latérale avec les onglets ####
   dashboardSidebar(
     sidebarMenu(
       menuItem("Exploration des données", tabName = "data_exploration", icon = icon("chart-bar")),
@@ -69,14 +69,15 @@ ui <- dashboardPage(
     )
   ),
   
-  # Corps du tableau de bord
+  #### >> 2.2 Corps du tableau de bord ####
   dashboardBody(
     tabItems(
-      # Onglet Exploration des données
+      #### > 2.2.1 Onglet Exploration des données ####
       tabItem(
         tabName = "data_exploration",
         fluidRow(
           box(
+            # Choix de l'analyse
             title = "Analyse des données", width = 12,
             selectInput("explore_type", "Choisissez une analyse :", 
                         choices = c(
@@ -105,6 +106,7 @@ ui <- dashboardPage(
                           choices = names(titanic_clean)[sapply(titanic_clean, is.factor)])
             )
           ),
+          # Visualisation
           box(
             title = "Visualisation", width = 12,
             uiOutput("dynamic_content")
@@ -112,12 +114,12 @@ ui <- dashboardPage(
         )
       ),
       
-      # Onglet Prédiction
+      #### > 2.2.2 Onglet Prédiction ####
       tabItem(
         tabName = "prediction",
         fluidRow(
-          # Boîte de Prédiction
           box(
+            # Choix du modèle de prédiction et des paramètres
             title = "Prédiction", width = 4,
             selectInput("model", "Modèle à utiliser :", 
                         choices = c("Random Forest" = "rf", "Régression Logistique" = "logistic", 
@@ -141,7 +143,7 @@ ui <- dashboardPage(
           )
         ),
         
-        # Matrice de Confusion dans une autre boîte
+        # Matrice de Confusion
         fluidRow(
           box(
             title = "Matrice de Confusion", status = "primary", solidHeader = TRUE, width = 12,
@@ -154,10 +156,10 @@ ui <- dashboardPage(
 )
 
 
-# === Serveur ===
+#### >>> 3. Interface utilisateur ####
 server <- function(input, output) {
   
-  # === Prédiction ===
+  #### >> 3.1 Prédiction ####
   observeEvent(input$predict, {
     new_data <- data.frame(
       classe_billet = factor(input$classe_billet, levels = levels(train_data$classe_billet)),
@@ -185,23 +187,23 @@ server <- function(input, output) {
     output$probabilities <- renderPrint(probabilities)
   })
   
-  # === Matrice de Confusion ===
+  #### >> 3.2 Matrice de Confusion ####
   output$confusion_matrix <- renderPlot({
     req(input$model)
     
     predictions <- switch(input$model,
                           "rf" = predict(rf_model, test_data),
                           "logistic" = {
-                            # Pour la régression logistique, transformer les probabilités en classes binaires
+                            # Pour la régression logistique, on transforme les probabilités en classes binaires
                             prob <- predict(logistic_model, test_data, type = "response")
-                            ifelse(prob > 0.5, 1, 0)  # Transformation en classe binaire (1 ou 0)
+                            ifelse(prob > 0.5, 1, 0)
                           },
                           "decision_tree" = predict(decision_tree_model, test_data, type = "class"),
                           "knn" = predict(knn_model, test_data))
     
-    # Assurez-vous que les prédictions et les vraies étiquettes sont des facteurs avec les mêmes niveaux
-    predictions <- factor(predictions, levels = c(0, 1))  # Supposons que les classes soient 0 et 1
-    test_data$survecu <- factor(test_data$survecu, levels = c(0, 1))  # Assurez-vous que les niveaux sont les mêmes
+  
+    predictions <- factor(predictions, levels = c(0, 1))
+    test_data$survecu <- factor(test_data$survecu, levels = c(0, 1))
     
     # Calcul de la matrice de confusion
     confusion <- confusionMatrix(predictions, test_data$survecu)
@@ -217,7 +219,7 @@ server <- function(input, output) {
       theme_minimal()
   })
   
-  # === Analyse Exploratoire ===
+  #### >> 3.3 Visualisation Analyse Exploratoire ####
   output$dynamic_content <- renderUI({
     req(input$explore_type)
     if (input$explore_type == "summary") {
@@ -242,12 +244,12 @@ server <- function(input, output) {
     }
   })
   
-  # Résumé
+  #### > 3.3.1 Résumé ####
   output$summary_output <- renderPrint({
     summary(titanic_clean)
   })
   
-  # Histogramme
+  #### > 3.3.2 Histogramme ####
   output$histogram_plot <- renderPlot({
     req(input$hist_variable)
     ggplot(titanic_clean, aes_string(x = input$hist_variable, fill = "survecu")) +
@@ -256,13 +258,13 @@ server <- function(input, output) {
       scale_fill_manual(values = c("red", "green"))
   })
   
-  # Corrélation
+  ##### > 3.3.3 Corrélation ####
   output$correlation_plot <- renderPlot({
     corr_matrix <- cor(titanic_clean %>% select(age, tarif, nb_famille_proche, nb_parents_enfants))
     corrplot(corr_matrix, method = "circle")
   })
   
-  # Boxplots
+  #### > 3.3.4 Boxplots ####
   output$boxplot <- renderPlot({
     ggplot(titanic_clean, aes_string(x = input$box_group, y = input$box_var, fill = input$box_group)) +
       geom_boxplot() +
@@ -270,7 +272,7 @@ server <- function(input, output) {
   })
   
   
-  # Distribution par variables catégoriques
+  #### > 3.3.5 Distribution par variables catégoriques ####
   output$categorical_plot <- renderPlot({
     req(input$cat_variable)
     ggplot(titanic_clean, aes_string(x = input$cat_variable, fill = "survecu")) +
@@ -278,7 +280,7 @@ server <- function(input, output) {
       labs(title = paste("Distribution de", input$cat_variable, "par survie"))
   })
   
-  # === Visualisations Originales ===
+  #### > 3.3.6 Visualisation originale ####
   
   # Graphique Radial
   output$radial_plot <- renderPlotly({
@@ -314,5 +316,5 @@ server <- function(input, output) {
 }
 
 
-# Lancer l'application Shiny
+#### >>> 4. Lancement de l'application
 shinyApp(ui = ui, server = server)
